@@ -25,12 +25,11 @@ class HttpHandler(BaseHTTPRequestHandler):
                     self.send_html_file(str(pathlib.Path(".").absolute().joinpath("front_init").joinpath("error.html")))
 
     def do_POST(self):
-        data = self.rfile.read(int(self.headers["Content-Length"])).decode()
-        data = urllib.parse.unquote_plus(data)
+        data = self.rfile.read(int(self.headers["Content-Length"]))
         with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as client_socket:
             try:
                 client_socket.connect(("127.0.0.1", 5000))
-                client_socket.send(data.encode())
+                client_socket.send(data)
             except ConnectionRefusedError:
                 sleep(0.5)
             finally:
@@ -69,25 +68,31 @@ class SocketServer:
             s.bind((host, port))
             s.listen(1)
             while True:
-                conn, address = s.accept()
+                conn,_ = s.accept()
                 with conn as con:
                     if con:
-                        self.accept_new_connection(con, address)
+                        self.accept_new_connection(con)
 
-    def accept_new_connection(self, conn, address):
+    def accept_new_connection(self, conn):
         new_thread = Thread(name=f"th_{conn}", daemon=True, target=self.new_thread_connection,
-                            args=(conn, "./front_init/storage/data.json"))
+                            args=(conn, str(pathlib.Path("front_init/storage/data.json").absolute())))
         new_thread.start()
         new_thread.join()
 
     def new_thread_connection(self, conn, file: str):
         while True:
             data = conn.recv(1024).decode()
+            data = urllib.parse.unquote_plus(data)
             if data:
-                with open("./front_init/storage/data.json", "r", encoding="utf-8") as f:
-                    data_load = dict(json.load(f))
-                data_load.update(self.prepare_data_for_store(data))
-                with open("./front_init/storage/data.json", "w", encoding="utf-8") as f:
+                try:
+                    with open(file, "r", encoding="utf-8") as f:
+                        data_load = dict(json.load(f))
+                except FileNotFoundError:
+                    with open(file, "w", encoding="utf-8") as f:
+                        f.writelines("{}")
+                        data_load = dict()
+                with open(file, "w", encoding="utf-8") as f:
+                    data_load.update(self.prepare_data_for_store(data))
                     json.dump(data_load, f, ensure_ascii=False)
             else:
                 break
